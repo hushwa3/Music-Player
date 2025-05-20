@@ -1,0 +1,73 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>Preferences</ion-title>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/home"></ion-back-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+  <ion-list lines="full">
+    <ion-item-divider>
+      <ion-label>Appearance</ion-label>
+    </ion-item-divider>
+    
+    <ion-item>
+      <ion-icon name="moon" slot="start"></ion-icon>
+      <ion-label>Dark Mode</ion-label>
+      <ion-toggle [(ngModel)]="isDarkMode" (ionChange)="toggleTheme($event)"></ion-toggle>
+    </ion-item>
+    
+    <ion-item-divider>
+      <ion-label>Audio</ion-label>
+    </ion-item-divider>
+    
+    <ion-item>
+      <ion-icon name="wifi" slot="start"></ion-icon>
+      <ion-label>Streaming Quality</ion-label>
+      <ion-select [(ngModel)]="streamingQuality" (ionChange)="onSetStreaming($event.detail.value)">
+        <ion-select-option value="Low">Low (64 kbps)</ion-select-option>
+        <ion-select-option value="Medium">Medium (128 kbps)</ion-select-option>
+        <ion-select-option value="High">High (320 kbps)</ion-select-option>
+      </ion-select>
+    </ion-item>
+    
+    <ion-item>
+      <ion-icon name="download" slot="start"></ion-icon>
+      <ion-label>Download Quality</ion-label>
+      <ion-select [(ngModel)]="downloadQuality" (ionChange)="onSetDownload($event.detail.value)">
+        <ion-select-option value="Low">Low (64 kbps)</ion-select-option>
+        <ion-select-option value="Medium">Medium (128 kbps)</ion-select-option>
+        <ion-select-option value="High">High (320 kbps)</ion-select-option>
+      </ion-select>
+    </ion-item>
+    
+    <ion-item-divider>
+      <ion-label>Storage</ion-label>
+    </ion-item-divider>
+    
+    <ion-item>
+      <ion-icon name="folder" slot="start"></ion-icon>
+      <ion-label>
+        <h2>Cache Size</h2>
+        <p>{{cacheSize}}</p>
+      </ion-label>
+      <ion-button slot="end" fill="outline" size="small" (click)="clearCache()">
+        Clear
+      </ion-button>
+    </ion-item>
+    
+    <ion-item-divider>
+      <ion-label>About</ion-label>
+    </ion-item-divider>
+    
+    <ion-item lines="none">
+      <ion-icon name="information-circle" slot="start"></ion-icon>
+      <ion-label>
+        <h2>Harmony Music Player</h2>
+        <p>Version 1.0.0</p>
+      </ion-label>
+    </ion-item>
+  </ion-list>
+</ion-content>

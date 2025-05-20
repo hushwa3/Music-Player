@@ -1,2 +1,709 @@
 // For information on how to create your own theme, please see:
 // http://ionicframework.com/docs/theming/
+// Main container styling
+ion-content {
+  --background: var(--ion-background-color);
+}
+
+// Section headers
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 0 8px;
+  padding: 0 16px;
+  
+  h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+  }
+}
+
+// Track cards
+.track-card {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  
+  .track-image {
+    width: 100%;
+    aspect-ratio: 1/1;
+    overflow: hidden;
+    
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  
+  .track-info {
+    padding: 8px 4px;
+    text-align: left;
+    
+    h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    p {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--ion-color-medium);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+// Playlist grid
+.playlist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 0 16px 16px;
+  
+  .playlist-card {
+    border-radius: 12px;
+    overflow: hidden;
+    
+    .playlist-image {
+      width: 100%;
+      aspect-ratio: 1/1;
+      
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+    
+    .playlist-info {
+      padding: 8px 4px;
+      
+      h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--ion-color-medium);
+      }
+    }
+  }
+}
+
+// Empty state
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  
+  ion-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    color: var(--ion-color-medium);
+  }
+  
+  h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 500;
+  }
+  
+  p {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: var(--ion-color-medium);
+  }
+}
+
+// Mini player
+.mini-player {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--ion-background-color);
+  border-top: 1px solid var(--ion-color-light);
+  padding: 8px 16px;
+  z-index: 100;
+  transition: transform 0.3s ease;
+  
+  &.hidden {
+    transform: translateY(100%) !important;
+  }
+  
+  &.closing {
+    transition: transform 0.3s ease;
+  }
+  
+  .mini-player-content {
+    display: flex;
+    align-items: center;
+    
+    ion-thumbnail {
+      width: 48px;
+      height: 48px;
+      --border-radius: 6px;
+      margin-right: 12px;
+    }
+    
+    .track-info {
+      flex: 1;
+      overflow: hidden;
+      
+      h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--ion-color-medium);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+    
+    .mini-controls {
+      display: flex;
+      align-items: center;
+      
+      ion-button {
+        --padding-start: 4px;
+        --padding-end: 4px;
+        margin: 0;
+        
+        ion-icon {
+          font-size: 20px;
+        }
+      }
+    }
+  }
+}
+
+// No search results
+.no-results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  
+  ion-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    color: var(--ion-color-medium);
+  }
+  
+  p {
+    margin: 0;
+    font-size: 16px;
+    color: var(--ion-color-medium);
+  }
+}
+
+:host {
+  ion-content {
+    --background: var(--ion-background-color);
+  }
+  
+  ion-header {
+    &::after {
+      display: none;
+    }
+  }
+}
+
+.now-playing-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  height: 100%;
+}
+
+.album-art-container {
+  width: 100%;
+  max-width: 300px;
+  margin: 32px 0;
+}
+
+.album-art {
+  width: 100%;
+  aspect-ratio: 1/1;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  animation: rotate 30s linear infinite paused;
+  
+  &.playing {
+    animation-play-state: running;
+  }
+  
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.track-info {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 32px;
+  
+  h1 {
+    margin: 0 0 8px;
+    font-size: 24px;
+    font-weight: 600;
+  }
+  
+  h2 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--ion-color-medium);
+  }
+  
+  p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--ion-color-medium);
+  }
+}
+
+.seek-container {
+  width: 100%;
+  margin-bottom: 24px;
+  
+  .time-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: var(--ion-color-medium);
+  }
+  
+  ion-range {
+    --bar-height: 4px;
+    --knob-size: 16px;
+    --bar-border-radius: 2px;
+    --knob-border-radius: 50%;
+    padding: 0;
+  }
+}
+
+.playback-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 24px;
+  
+  ion-button {
+    margin: 0 12px;
+    
+    ion-icon {
+      font-size: 24px;
+    }
+    
+    &.play-button {
+      --border-radius: 50%;
+      --padding-start: 0;
+      --padding-end: 0;
+      --padding-top: 0;
+      --padding-bottom: 0;
+      width: 64px;
+      height: 64px;
+      
+      ion-icon {
+        font-size: 32px;
+      }
+    }
+  }
+}
+
+.secondary-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  
+  ion-button {
+    margin: 0 16px;
+    
+    ion-icon {
+      font-size: 20px;
+    }
+  }
+}
+
+.no-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 0 32px;
+  
+  ion-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    color: var(--ion-color-medium);
+  }
+  
+  h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 500;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 16px;
+    color: var(--ion-color-medium);
+  }
+}
+
+.custom-action-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  
+  .sheet-content {
+    position: relative;
+    background: var(--ion-background-color);
+    border-radius: 16px 16px 0 0;
+    overflow: hidden;
+    
+    .sheet-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px;
+      border-bottom: 1px solid var(--ion-color-light);
+      
+      h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+    }
+  }
+}
+
+ion-content {
+  --background: var(--ion-background-color);
+}
+
+.playlist-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  
+  .playlist-image {
+    width: 160px;
+    height: 160px;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  
+  h1 {
+    margin: 0 0 4px;
+    font-size: 24px;
+    font-weight: 600;
+  }
+  
+  p {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: var(--ion-color-medium);
+  }
+  
+  ion-button {
+    margin: 8px 0;
+  }
+}
+
+.empty-playlists, .empty-tracks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  
+  ion-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+    color: var(--ion-color-medium);
+  }
+  
+  h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 500;
+  }
+  
+  p {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: var(--ion-color-medium);
+  }
+}
+
+// Mini Player Styles
+.mini-player {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--ion-background-color);
+  border-top: 1px solid var(--ion-color-light);
+  padding: 8px 16px;
+  z-index: 100;
+  transition: transform 0.3s ease;
+  
+  &.closing {
+    transition: transform 0.3s ease;
+  }
+  
+  .mini-player-content {
+    display: flex;
+    align-items: center;
+    
+    ion-thumbnail {
+      width: 48px;
+      height: 48px;
+      --border-radius: 6px;
+      margin-right: 12px;
+    }
+    
+    .track-info {
+      flex: 1;
+      overflow: hidden;
+      
+      h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      
+      p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--ion-color-medium);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
+    
+    .mini-controls {
+      display: flex;
+      align-items: center;
+      
+      ion-button {
+        --padding-start: 4px;
+        --padding-end: 4px;
+        margin: 0;
+        
+        ion-icon {
+          font-size: 20px;
+        }
+      }
+    }
+  }
+}
+
+// Full Player Styles
+.full-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  height: 100%;
+  
+  .album-art-container {
+    width: 100%;
+    max-width: 300px;
+    margin: 32px 0;
+  }
+  
+  .album-art {
+    width: 100%;
+    aspect-ratio: 1/1;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    animation: rotate 30s linear infinite paused;
+    
+    &.playing {
+      animation-play-state: running;
+    }
+    
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  
+  @keyframes rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  
+  .track-info {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 32px;
+    
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 600;
+    }
+    
+    h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 400;
+      color: var(--ion-color-medium);
+    }
+    
+    p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--ion-color-medium);
+    }
+  }
+  
+  .seek-container {
+    width: 100%;
+    margin-bottom: 24px;
+    
+    .time-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: var(--ion-color-medium);
+    }
+    
+    ion-range {
+      --bar-height: 4px;
+      --knob-size: 16px;
+      --bar-border-radius: 2px;
+      --knob-border-radius: 50%;
+      padding: 0;
+    }
+  }
+  
+  .playback-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 24px;
+    
+    ion-button {
+      margin: 0 12px;
+      
+      ion-icon {
+        font-size: 24px;
+      }
+      
+      &.play-button {
+        --border-radius: 50%;
+        --padding-start: 0;
+        --padding-end: 0;
+        --padding-top: 0;
+        --padding-bottom: 0;
+        width: 64px;
+        height: 64px;
+        
+        ion-icon {
+          font-size: 32px;
+        }
+      }
+    }
+  }
+  
+  .secondary-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    
+    ion-button {
+      margin: 0 16px;
+      
+      ion-icon {
+        font-size: 20px;
+      }
+    }
+  }
+}
