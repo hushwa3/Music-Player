@@ -91,6 +91,26 @@ export class HomePage implements OnInit, OnDestroy {
       this.localPlaying = false;
     });
 
+    // Verify database connection
+    try {
+      console.log('Verifying database connection...');
+      const dbVerified = await this.dataService.verifyDatabaseConnection();
+      if (!dbVerified) {
+        console.warn('Database connection issue detected');
+        const toast = await this.toastCtrl.create({
+          message: 'Warning: Database connection issue detected',
+          duration: 3000,
+          position: 'bottom',
+          color: 'warning'
+        });
+        await toast.present();
+      } else {
+        console.log('Database connection verified successfully');
+      }
+    } catch (error) {
+      console.error('Error verifying database:', error);
+    }
+
     // Settings subscription
     this.settingsSub = this.configService.settings$.subscribe(s => {
       this.isDarkMode = s.darkMode;
@@ -119,14 +139,14 @@ export class HomePage implements OnInit, OnDestroy {
   }
 
   onRangeChange(event: any) {
-  const value = event.detail.value;
-  if (typeof value === 'number') {
-    this.seekTrack(value);
-  } else if (value && typeof value.lower === 'number') {
-    // In case a RangeValue is emitted, just use the 'lower' value
-    this.seekTrack(value.lower);
+    const value = event.detail.value;
+    if (typeof value === 'number') {
+      this.seekTrack(value);
+    } else if (value && typeof value.lower === 'number') {
+      // In case a RangeValue is emitted, just use the 'lower' value
+      this.seekTrack(value.lower);
+    }
   }
-}
 
   toggleTrackLike(track: Track) {
     if (track) {
@@ -281,28 +301,49 @@ export class HomePage implements OnInit, OnDestroy {
     }
   }
 
-  async requestAudioPermissions() {
-    if (Capacitor.isNativePlatform()) {
-      try {
-        // Request filesystem permissions which include audio access
-        await Filesystem.requestPermissions();
-        return true;
-      } catch (e) {
-        console.error('Error requesting permissions:', e);
-        return false;
+async requestAudioPermissions() {
+  console.log('Requesting audio/storage permissions');
+  
+  if (Capacitor.isNativePlatform()) {
+    try {
+      // Skip permission request if on Android and permissions are already granted
+      if (this.platform.is('android')) {
+        console.log('Android platform detected, proceeding with existing permissions');
+        return true; // You mentioned permissions are already allowed
       }
+      
+      // For other platforms, request permissions normally
+      console.log('Requesting Filesystem permissions');
+      const result = await Filesystem.requestPermissions();
+      console.log('Permission request result:', result);
+      return true;
+    } catch (e) {
+      console.error('Error requesting permissions:', e);
+      return true; // Continue anyway since you said permissions are already granted
     }
-    return true; // In web, permissions work differently
   }
+  return true; // In web, permissions work differently
+}
 
   async scanDeviceForMusic() {
+    console.log('Starting device scan for music files');
     const loading = await this.loadingCtrl.create({
       message: 'Scanning for music files...'
     });
     await loading.present();
 
     try {
+      // First, ensure we have permissions
+      const permissionGranted = await this.requestAudioPermissions();
+      if (!permissionGranted) {
+        console.warn('Permission not granted for scanning');
+        throw new Error('Permission not granted');
+      }
+      
+      console.log('Calling mediaScanner.scanDeviceForMusic()');
       const tracks = await this.mediaScanner.scanDeviceForMusic();
+      console.log(`Scan completed, found ${tracks.length} tracks`);
+      
       await this.refreshLocalMusic();
       
       const toast = await this.toastCtrl.create({
@@ -315,7 +356,7 @@ export class HomePage implements OnInit, OnDestroy {
     } catch (error) {
       console.error('Error scanning for music:', error);
       const toast = await this.toastCtrl.create({
-        message: 'Could not scan for music files',
+        message: 'Could not scan for music files: ' + (error || 'Unknown error'),
         duration: 2000,
         position: 'bottom',
         color: 'danger'
@@ -330,70 +371,117 @@ export class HomePage implements OnInit, OnDestroy {
     this.fileInput.nativeElement.click();
   }
 
-  async onFileSelected(evt: Event) {
-    const input = evt.target as HTMLInputElement;
-    if (!input.files?.length) return;
+async onFileSelected(evt: Event) {
+  const input = evt.target as HTMLInputElement;
+  if (!input.files?.length) return;
 
-    const files = Array.from(input.files);
+  const files = Array.from(input.files);
+  console.log(`Processing ${files.length} files`);
 
-    // 1) Gather existing filenames (basename of localPath, or title)
-    const existingFileNames = new Set(
-      this.localMusic.map(t => {
-        const pathOrTitle = t.localPath || t.title;
-        return pathOrTitle.split('/').pop()!.toLowerCase();
-      })
-    );
+  // 1) Gather existing filenames (basename of localPath, or title)
+  const existingFileNames = new Set(
+    this.localMusic.map(t => {
+      const pathOrTitle = t.localPath || t.title;
+      return pathOrTitle.split('/').pop()!.toLowerCase();
+    })
+  );
 
-    // 2) Split incoming files into new vs. duplicates
-    const newFiles = files.filter(f => !existingFileNames.has(f.name.toLowerCase()));
-    const dupFiles = files.filter(f => existingFileNames.has(f.name.toLowerCase()));
+  // 2) Split incoming files into new vs. duplicates
+  const newFiles = files.filter(f => !existingFileNames.has(f.name.toLowerCase()));
+  const dupFiles = files.filter(f => existingFileNames.has(f.name.toLowerCase()));
 
-    // 3) Warn about duplicates
-    if (dupFiles.length) {
-      const dupToast = await this.toastCtrl.create({
-        message: `Skipped ${dupFiles.length} duplicate file(s).`,
+  // 3) Warn about duplicates
+  if (dupFiles.length) {
+    const dupToast = await this.toastCtrl.create({
+      message: `Skipped ${dupFiles.length} duplicate file(s).`,
+      duration: 2000,
+      position: 'bottom',
+      color: 'warning'
+    });
+    await dupToast.present();
+  }
+
+  if (!newFiles.length) {
+    input.value = '';
+    return;  // nothing to upload
+  }
+
+  // 4) Proceed with uploading only newFiles…
+  const loading = await this.loadingCtrl.create({ message: 'Uploading music…' });
+  await loading.present();
+
+  const successfulFiles = [];
+  const failedFiles = [];
+
+  try {    
+    for (const file of newFiles) {
+      try {
+        console.log(`Processing file: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
+        
+        // Check file size
+        if (file.size > 50 * 1024 * 1024) { // 50MB limit
+          console.warn(`File too large: ${file.name} (${file.size} bytes)`);
+          failedFiles.push({name: file.name, error: 'File too large (max 50MB)'});
+          continue;
+        }
+        
+        // Check if file type is supported
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        if (!extension || !['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac', 'opus'].includes(extension)) {
+          console.warn(`Unsupported file type: ${extension}`);
+          failedFiles.push({name: file.name, error: 'Unsupported file type'});
+          continue;
+        }
+        
+        // Process through audioService which now handles different storage methods
+        const track = await this.audioService.addLocalTrack(file);
+        successfulFiles.push(file.name);
+        console.log(`Successfully added: ${file.name}`);
+      } catch (fileError) {
+        console.error(`Error processing ${file.name}:`, fileError);
+        const errorMsg = fileError && fileError? fileError: 'Unknown error';
+        failedFiles.push({name: file.name, error: errorMsg});
+      }
+    }
+    
+    await this.refreshLocalMusic();
+    
+    // Show success message if any files were successful
+    if (successfulFiles.length > 0) {
+      const okToast = await this.toastCtrl.create({
+        message: `Added ${successfulFiles.length} music files successfully!`,
         duration: 2000,
         position: 'bottom',
-        color: 'warning'
+        color: 'success'
       });
-      await dupToast.present();
+      await okToast.present();
     }
-
-    if (!newFiles.length) {
-      input.value = '';
-      return;  // nothing to upload
-    }
-
-    // 4) Proceed with uploading only newFiles…
-    const loading = await this.loadingCtrl.create({ message: 'Uploading music…' });
-    await loading.present();
-
-    try {
-      for (const file of newFiles) {
-        const track = await this.audioService.addLocalTrack(file);
-        const okToast = await this.toastCtrl.create({
-          message: `"${track.title}" uploaded successfully!`,
-          duration: 1500,
-          position: 'bottom',
-          color: 'success'
-        });
-        await okToast.present();
-      }
-      await this.refreshLocalMusic();
-    } catch (error) {
-      console.error('Error uploading file:', error);
+    
+    // Show detailed error if any files failed
+    if (failedFiles.length > 0) {
       const errToast = await this.toastCtrl.create({
-        message: 'Error uploading some files.',
-        duration: 2000,
+        message: `Failed to add ${failedFiles.length} files. Check console for details.`,
+        duration: 3000,
         position: 'bottom',
         color: 'danger'
       });
       await errToast.present();
-    } finally {
-      input.value = '';
-      loading.dismiss();
     }
+  } catch (error) {
+    console.error('Error in upload process:', error);
+    const errorMessage = error && error ? error : 'Unknown error';
+    const errToast = await this.toastCtrl.create({
+      message: 'Error uploading files: ' + errorMessage,
+      duration: 3000,
+      position: 'bottom',
+      color: 'danger'
+    });
+    await errToast.present();
+  } finally {
+    input.value = '';
+    loading.dismiss();
   }
+}
 
   toggleLocalPlay() {
     if (this.localPlaying) {

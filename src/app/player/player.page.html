@@ -31,21 +31,24 @@
     </div>
 
     <!-- Progress Bar -->
-    <div class="progress-container" *ngIf="currentTrack">
-      <div class="time-display">
-        <span class="current-time">{{formatTime(currentTime)}}</span>
-        <span class="total-time">{{formatTime(duration)}}</span>
-      </div>
-      <ion-range
-        class="progress-bar"
-        [min]="0"
-        [max]="duration || 0.01"
-        [value]="currentTime"
-        [class.dark-mode]="isDarkMode"
-        (ionInput)="onSeekDrag($event)"
-        (ionChange)="seek($event)">
-      </ion-range>
-    </div>
+<div class="minimal-player-progress">
+  <div class="time-labels">{{ formatTime(currentTime) }}</div>
+  
+  <ion-range
+    class="progress-bar"
+    [min]="0"
+    [max]="duration || 1"
+    [value]="currentTime"
+    [class.dark-mode]="isDarkMode"
+    (ionInput)="onSeekDrag($event)"
+    (ionChange)="seek($event)"
+    color="primary"
+    snaps="false"
+    pin="true">
+  </ion-range>
+  
+  <div class="time-labels">{{ formatTime(duration) }}</div>
+</div>
 
     <!-- Controls -->
     <div class="controls" *ngIf="currentTrack">

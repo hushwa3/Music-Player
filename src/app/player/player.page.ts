@@ -5,6 +5,7 @@ import { MediaPlayerService, Track } from '../services/media-player.service'; //
 import { ConfigService } from '../services/config.service'; // Update these imports
 import { DataService } from '../services/data.service'; // Update these imports
 import { AlertController, ToastController } from '@ionic/angular';
+import { firstValueFrom, take } from 'rxjs';
 
 @Component({
   selector: 'app-player',
@@ -96,52 +97,95 @@ export class PlayerPage implements OnInit, OnDestroy {
     this.settingsSub?.unsubscribe();
   }
 
-  private checkAndPlayCurrentTrack() {
-    const sub = this.mediaPlayer.getCurrentTrack().subscribe(track => {
-      if (track) {
-        try {
-          this.mediaPlayer.play(track);
-        } catch (err) {
-          console.error('Error playing track:', err);
-          this.showAlert('Playback Error',
-            'Could not play the current track. Please try selecting another track.');
-        }
+ private checkAndPlayCurrentTrack() {
+  console.log('Checking for current track to play...');
+  const sub = this.mediaPlayer.getCurrentTrack().pipe(
+    take(1)  // Make sure we only take one value
+  ).subscribe(track => {
+    console.log('Got track from current track observable:', track);
+    if (track) {
+      try {
+        console.log('Attempting to play current track:', track.title);
+        this.mediaPlayer.play(track);
+      } catch (err) {
+        console.error('Error playing track:', err);
+        this.showAlert('Playback Error',
+          'Could not play the current track. Please try selecting another track.');
       }
-      sub.unsubscribe();
-    });
-  }
+    } else {
+      console.log('No current track found');
+    }
+  });
+}
 
   goBack() {
     this.location.back();
   }
 
-  async togglePlay() {
-    if (!this.currentTrack) return;
+async togglePlay() {
+  if (!this.currentTrack) {
+    console.log('No track selected');
+    return;
+  }
 
-    try {
-      if (this.isPlaying) {
-        await this.mediaPlayer.pause();
+  try {
+    console.log('Current track:', this.currentTrack);
+    console.log('Current playing state:', this.isPlaying);
+    
+    if (this.isPlaying) {
+      // Already playing, so just pause
+      console.log('Pausing playback');
+      await this.mediaPlayer.pause();
+    } else {
+      // Handle both scenarios - initial play and resume
+      const player = this.mediaPlayer.getCurrentPlayer();
+      console.log('Player state:', player ? 'exists' : 'null', 
+                  player ? `currentTime: ${player.currentTime}, paused: ${player.paused}` : '');
+                  
+      if (player && player.src && player.currentTime > 0) {
+        // Resume existing playback
+        console.log('Resuming existing playback');
+        await this.mediaPlayer.resume();
       } else {
-        await this.mediaPlayer.resume(this.currentTime);
+        // Start fresh playback
+        console.log('Starting fresh playback');
+        await this.mediaPlayer.play(this.currentTrack);
       }
-    } catch (error) {
-      console.error('Error toggling play/pause: ', error);
     }
+  } catch (error) {
+    console.error('Detailed playback error:', error);
+    // Show more specific error to help debug
+    const errorDetails = error instanceof Error ? 
+      `${error.name}: ${error.message}` : JSON.stringify(error);
+    this.showAlert('Playback Issue', `Please try again. Technical details: ${errorDetails}`);
   }
+}
 
-  seek(event: any) {
-    try {
-      const newValue = event.detail.value;
-      this.currentTime = newValue;
-      this.mediaPlayer.seek(newValue);
-    } catch (error) {
-      console.error('Error seeking:', error);
+seek(event: any) {
+  try {
+    if (!event || !event.detail) {
+      console.error('Invalid seek event:', event);
+      return;
     }
+    
+    const newValue = event.detail.value;
+    console.log(`Seeking to ${newValue}s`);
+    
+    if (typeof newValue !== 'number' || isNaN(newValue)) {
+      console.warn('Invalid seek value:', newValue);
+      return;
+    }
+    
+    this.currentTime = newValue;
+    this.mediaPlayer.seek(newValue);
+  } catch (error) {
+    console.error('Error seeking:', error);
   }
-  
-  onSeekDrag(event: any) {
-    this.currentTime = event.detail.value;
-  }
+}
+
+onSeekDrag(event: any) {
+  this.currentTime = event.detail.value;
+}
 
   previous() {
     this.mediaPlayer.previous();

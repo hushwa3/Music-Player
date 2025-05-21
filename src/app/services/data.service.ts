@@ -21,62 +21,92 @@ export class DataService {
   async ensureInit(): Promise<void> {
     if (this._initPromise) return this._initPromise;
     this._initPromise = (async () => {
-      await this.platform.ready();
-      if (!this.platform.is('hybrid')) {
-        await this.sqlite.initWebStore();
+      try {
+        console.log('Initializing database...');
+        await this.platform.ready();
+        
+        if (!this.platform.is('hybrid')) {
+          console.log('Running in web mode, initializing WebStore');
+          await this.sqlite.initWebStore();
+        }
+        
+        console.log('Checking SQLite connections consistency');
+        await this.sqlite.checkConnectionsConsistency();
+        
+        console.log('Creating database connection');
+        this.db = await this.sqlite.createConnection('harmony.db', false, 'no-encryption', 1, false);
+        
+        console.log('Opening database connection');
+        await this.db.open();
+
+        const sql = `
+          CREATE TABLE IF NOT EXISTS playlists (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE TRIGGER IF NOT EXISTS trg_playlists_updated
+            AFTER UPDATE OF name ON playlists
+          BEGIN
+            UPDATE playlists SET updated_at = datetime('now') WHERE id = NEW.id;
+          END;
+          CREATE TABLE IF NOT EXISTS playlist_tracks (
+            playlist_id INTEGER NOT NULL,
+            track_id    TEXT NOT NULL,
+            position    INTEGER,
+            PRIMARY KEY (playlist_id, track_id)
+          );
+          CREATE TABLE IF NOT EXISTS tracks (
+            id           TEXT PRIMARY KEY,
+            title        TEXT,
+            artist       TEXT,
+            album        TEXT,
+            duration     INTEGER,
+            image_url    TEXT,
+            preview_url  TEXT,
+            spotify_id   TEXT,
+            liked        INTEGER DEFAULT 0,
+            is_local     INTEGER DEFAULT 0
+          );
+          CREATE TABLE IF NOT EXISTS liked_music (
+            track_id     TEXT PRIMARY KEY,
+            liked_at     TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+          );
+          CREATE TABLE IF NOT EXISTS downloaded_music (
+            track_id     TEXT PRIMARY KEY,
+            file_uri     TEXT NOT NULL,
+            file_path    TEXT NOT NULL,
+            downloaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );`;
+
+        console.log('Executing database schema creation');
+        await this.db.execute(sql);
+        console.log('Database initialization completed successfully');
+      } catch (error) {
+        console.error('Database initialization failed:', error);
+        throw error;
       }
-      await this.sqlite.checkConnectionsConsistency();
-      this.db = await this.sqlite.createConnection('harmony.db', false, 'no-encryption', 1, false);
-      await this.db.open();
-
-      const sql = `
-        CREATE TABLE IF NOT EXISTS playlists (
-          id           INTEGER PRIMARY KEY AUTOINCREMENT,
-          name         TEXT NOT NULL,
-          created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE TRIGGER IF NOT EXISTS trg_playlists_updated
-          AFTER UPDATE OF name ON playlists
-        BEGIN
-          UPDATE playlists SET updated_at = datetime('now') WHERE id = NEW.id;
-        END;
-        CREATE TABLE IF NOT EXISTS playlist_tracks (
-          playlist_id INTEGER NOT NULL,
-          track_id    TEXT NOT NULL,
-          position    INTEGER,
-          PRIMARY KEY (playlist_id, track_id)
-        );
-        CREATE TABLE IF NOT EXISTS tracks (
-          id           TEXT PRIMARY KEY,
-          title        TEXT,
-          artist       TEXT,
-          album        TEXT,
-          duration     INTEGER,
-          image_url    TEXT,
-          preview_url  TEXT,
-          spotify_id   TEXT,
-          liked        INTEGER DEFAULT 0,
-          is_local     INTEGER DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS liked_music (
-          track_id     TEXT PRIMARY KEY,
-          liked_at     TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS settings (
-          key TEXT PRIMARY KEY,
-          value TEXT
-        );
-        CREATE TABLE IF NOT EXISTS downloaded_music (
-          track_id     TEXT PRIMARY KEY,
-          file_uri     TEXT NOT NULL,
-          file_path    TEXT NOT NULL,
-          downloaded_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );`;
-
-      await this.db.execute(sql);
     })();
     return this._initPromise;
+  }
+
+  // Verify database connection - useful for debugging
+  async verifyDatabaseConnection(): Promise<boolean> {
+    try {
+      await this.ensureInit();
+      // Try a simple query to verify connection
+      const result = await this.db.query('SELECT 1');
+      console.log('Database connection verified:', result);
+      return true;
+    } catch (error) {
+      console.error('Database connection verification failed:', error);
+      return false;
+    }
   }
 
   // ---------- Playlist CRUD ----------
@@ -157,41 +187,49 @@ export class DataService {
   }
 
   async getLocalTracks(): Promise<Track[]> {
-    await this.ensureInit();
+    try {
+      await this.ensureInit();
+      console.log('Retrieving local tracks from database');
 
-    // Join with downloaded_music to get file_path as well
-    const res = await this.db.query(`
-      SELECT
-        t.id,
-        t.title,
-        t.artist,
-        t.album,
-        t.duration,
-        t.image_url    AS imageUrl,
-        t.preview_url  AS previewUrl,
-        t.spotify_id   AS spotifyId,
-        t.liked,
-        t.is_local     AS isLocal,
-        dm.file_path   AS localPath
-      FROM tracks t
-      LEFT JOIN downloaded_music dm ON dm.track_id = t.id
-      WHERE t.is_local = 1
-      ORDER BY t.ROWID DESC;
-    `);
+      // Join with downloaded_music to get file_path as well
+      const res = await this.db.query(`
+        SELECT
+          t.id,
+          t.title,
+          t.artist,
+          t.album,
+          t.duration,
+          t.image_url    AS imageUrl,
+          t.preview_url  AS previewUrl,
+          t.spotify_id   AS spotifyId,
+          t.liked,
+          t.is_local     AS isLocal,
+          dm.file_path   AS localPath
+        FROM tracks t
+        LEFT JOIN downloaded_music dm ON dm.track_id = t.id
+        WHERE t.is_local = 1
+        ORDER BY t.ROWID DESC;
+      `);
 
-    return (res.values || []).map((r: any) => ({
-      id: r.id,
-      title: r.title,
-      artist: r.artist,
-      album: r.album,
-      duration: r.duration,
-      imageUrl: r.imageUrl,
-      previewUrl: r.previewUrl,
-      spotifyId: r.spotifyId,
-      liked: !!r.liked,
-      isLocal: !!r.isLocal,
-      localPath: r.localPath
-    }));
+      console.log(`Found ${res.values?.length || 0} local tracks`);
+      
+      return (res.values || []).map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        artist: r.artist,
+        album: r.album,
+        duration: r.duration,
+        imageUrl: r.imageUrl,
+        previewUrl: r.previewUrl,
+        spotifyId: r.spotifyId,
+        liked: !!r.liked,
+        isLocal: !!r.isLocal,
+        localPath: r.localPath
+      }));
+    } catch (error) {
+      console.error('Error retrieving local tracks:', error);
+      return [];
+    }
   }
 
   async addLiked(trackId: string): Promise<boolean> {
@@ -248,15 +286,24 @@ export class DataService {
   }
 
   async uploadedMusic(trackId: string, uri: string, filePath: string = ''): Promise<boolean> {
-    await this.ensureInit();
-    const now = new Date().toISOString();
-    await this.db.run(
-      `INSERT OR REPLACE INTO downloaded_music
-        (track_id, file_uri, file_path, downloaded_at)
-      VALUES (?, ?, ?, ?);`,
-      [trackId, uri, filePath || uri, now]
-    );
-    return true;
+    try {
+      await this.ensureInit();
+      console.log(`Recording uploaded music in database: trackId=${trackId}, path=${filePath}`);
+      
+      const now = new Date().toISOString();
+      await this.db.run(
+        `INSERT OR REPLACE INTO downloaded_music
+          (track_id, file_uri, file_path, downloaded_at)
+        VALUES (?, ?, ?, ?);`,
+        [trackId, uri, filePath || uri, now]
+      );
+      
+      console.log('Music file record saved successfully');
+      return true;
+    } catch (error) {
+      console.error('Error recording uploaded music:', error);
+      throw error;
+    }
   }
 
   async deleteLocalTrack(trackId: string): Promise<boolean> {
@@ -302,6 +349,7 @@ export class DataService {
       
       return true;
     } catch (error) {
+      console.error('Error deleting local track:', error);
       throw error;
     }
   }
@@ -323,24 +371,33 @@ export class DataService {
   }
 
   async saveTrack(track: any): Promise<boolean> {
-    await this.ensureInit();
-    await this.db.run(
-      `INSERT OR REPLACE INTO tracks
-         (id, title, artist, album,
-          duration, image_url, preview_url,
-          spotify_id, liked, is_local)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      [
-        track.id,
-        track.title, track.artist, track.album,
-        track.duration,
-        track.imageUrl, track.previewUrl,
-        track.spotifyId,
-        track.liked ? 1 : 0,
-        track.isLocal ? 1 : 0
-      ]
-    );
-    return true;
+    try {
+      await this.ensureInit();
+      console.log(`Saving track to database: id=${track.id}, title=${track.title}`);
+      
+      await this.db.run(
+        `INSERT OR REPLACE INTO tracks
+           (id, title, artist, album,
+            duration, image_url, preview_url,
+            spotify_id, liked, is_local)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          track.id,
+          track.title, track.artist, track.album,
+          track.duration,
+          track.imageUrl, track.previewUrl,
+          track.spotifyId,
+          track.liked ? 1 : 0,
+          track.isLocal ? 1 : 0
+        ]
+      );
+      
+      console.log('Track saved successfully');
+      return true;
+    } catch (error) {
+      console.error('Error saving track:', error);
+      throw error;
+    }
   }
 
   async getTrack(trackId: string): Promise<any> {
@@ -426,21 +483,45 @@ export class DataService {
     }
   }
 
-  async saveLocalMusic(track: Track, filePath: string = ''): Promise<boolean> {
+ async saveLocalMusic(track: Track, filePath: string = ''): Promise<boolean> {
+  try {
     await this.ensureInit();
+    console.log(`Saving local music: id=${track.id}, path=${filePath}`);
+    
+    // Ensure track is marked as local
     const trackWithLocal = {
       ...track,
       isLocal: true
     };
-    await this.saveTrack(trackWithLocal);
-    await this.uploadedMusic(
-      track.id,
-      track.previewUrl,
-      filePath || `music/${track.id}.mp3`
-    );
+    
+    // First, save the track metadata
+    try {
+      await this.saveTrack(trackWithLocal);
+      console.log('Track metadata saved successfully');
+    } catch (trackErr) {
+      console.error('Error saving track metadata:', trackErr);
+      throw new Error(`Failed to save track metadata: ${trackErr || JSON.stringify(trackErr)}`);
+    }
+    
+    // Then, record the track's URI/path for playback
+    try {
+      await this.uploadedMusic(
+        track.id,
+        track.previewUrl, // Use the previewUrl directly as the URI
+        filePath || track.previewUrl // Without Filesystem, use the URI as the path
+      );
+      console.log('Track file path saved successfully');
+    } catch (pathErr) {
+      console.error('Error saving file path:', pathErr);
+      throw new Error(`Failed to save file path: ${pathErr|| JSON.stringify(pathErr)}`);
+    }
 
     return true;
+  } catch (error) {
+    console.error('Error in saveLocalMusic:', error);
+    throw error;
   }
+}
 
   async getDownloadedTracksWithInfo(): Promise<Track[]> {
     await this.ensureInit();
@@ -501,7 +582,7 @@ export class DataService {
             directory: Directory.Data
           });
           exists = true;
-        }else {
+        } else {
           await Filesystem.stat({
             path: fileInfo.path,
             directory: Directory.Data
@@ -526,6 +607,7 @@ export class DataService {
       }
       return exists;
     } catch (error) {
+      console.error('Error verifying local track:', error);
       return false;
     }
   }

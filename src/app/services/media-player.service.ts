@@ -3,7 +3,6 @@ import { BehaviorSubject, Observable } from 'rxjs';
 import { DataService } from './data.service';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Platform } from '@ionic/angular';
-import { NativeAudio } from '@capacitor-community/native-audio';
 import { Capacitor } from '@capacitor/core';
 
 export interface Track {
@@ -141,7 +140,7 @@ export class MediaPlayerService {
     }
   }
 
-  private getCurrentPlayer(): HTMLAudioElement {
+  public getCurrentPlayer(): HTMLAudioElement {
     const track = this.currentTrack$.getValue();
     return track?.isLocal ? this.localAudioPlayer : this.audioPlayer;
   }
@@ -153,10 +152,12 @@ export class MediaPlayerService {
         if (saved.isLocal) {
           const exists = await this.dataService.getTrack(saved.id);
           if (!exists) {
+            console.log('Last played track no longer exists');
             return;
           }
         }
         this.currentTrack$.next(saved);
+        console.log('Restored last played track:', saved.title);
       }
     } catch (err) {
       console.error('[MediaPlayerService] restoreLastTrack error:', err);
@@ -165,35 +166,69 @@ export class MediaPlayerService {
 
   private saveLastTrack(track: Track) {
     this.dataService.set('last_played_track', track);
+    console.log('Saved as last played track:', track.title);
   }
 
-  async play(track: Track): Promise<void> {
-    this.cleanup();
-    this.currentTrack$.next(track);
-    this.saveLastTrack(track);
+async play(track: Track): Promise<void> {
+  this.cleanup();
+  
+  // FIX 1: Make sure track has necessary properties
+  if (!track) {
+    console.error('Null track provided to play method');
+    throw new Error('No track to play');
+  }
+  
+  // FIX 2: Fix file paths for local tracks
+  if (track.isLocal) {
+    // Make sure we have a path
+    if (!track.previewUrl && track.localPath) {
+      console.log('Using localPath instead of previewUrl');
+      track.previewUrl = track.localPath;
+    }
+    
+    // Add the proper file:// prefix if missing for native platforms
+    if (Capacitor.isNativePlatform() && track.previewUrl && !track.previewUrl.startsWith('file://')) {
+      console.log('Adding file:// prefix to previewUrl');
+      track.previewUrl = `file://${track.previewUrl}`;
+    }
+    
+    // Debug info
+    console.log('Final track path:', track.previewUrl);
+  }
+  
+  this.currentTrack$.next(track);
+  this.saveLastTrack(track);
+  console.log(`Playing track: ${track.title}, isLocal: ${track.isLocal}`);
 
     try {
-      if (track.isLocal) {
+      if (track.isLocal ) {
         const player = this.localAudioPlayer;
+        console.log('Using local audio player');
 
         if (Capacitor.isNativePlatform()) {
           console.log('Playing local track on native platform:', track.previewUrl);
           const audioSrc = Capacitor.convertFileSrc(track.previewUrl);
+          console.log('Converted file source:', audioSrc);
           player.src = audioSrc;
           player.load();
           try {
             await player.play();
             this.isPlaying$.next(true);
             this.startUpdates();
+            console.log('Local playback started successfully');
           } catch (playError) {
+            console.error('Error starting local playback:', playError);
             throw playError;
           }
         } else {
+          console.log('Playing local track on web platform');
           try {
+            console.log('Reading file from:', track.previewUrl);
             const fileData = await Filesystem.readFile({
               path: track.previewUrl.replace('file://', ''),
               directory: Directory.Data,
             });
+            console.log('File read successfully, creating blob');
 
             if (fileData.data) {
               let blob: Blob;
@@ -205,12 +240,16 @@ export class MediaPlayerService {
               }
               const url = URL.createObjectURL(blob);
               this._currentBlobUrl = url;
+              console.log('Blob URL created:', url);
               player.src = url;
               player.load();
+              
               await player.play();
               this.isPlaying$.next(true);
               this.startUpdates();
+              console.log('Web playback started successfully');
             } else {
+              console.error('File data is empty');
               throw new Error('File data is empty');
             }
           } catch (webPlayError) {
@@ -219,10 +258,12 @@ export class MediaPlayerService {
           }
         }
       } else {
+        console.log('Playing streaming track:', track.previewUrl);
         this.audioPlayer.src = track.previewUrl;
         this.audioPlayer.load();
         await this.audioPlayer.play();
         this.isPlaying$.next(true);
+        console.log('Streaming playback started');
       }
     } catch (e) {
       console.error('Playback failed:', e);
@@ -231,7 +272,8 @@ export class MediaPlayerService {
     }
   }
 
-  private base64ToBlob(data: string | ArrayBuffer, mimeType: string): Blob {
+private base64ToBlob(data: string | ArrayBuffer, mimeType: string): Blob {
+  try {
     let base64String: string;
 
     if (typeof data === 'string') {
@@ -240,20 +282,42 @@ export class MediaPlayerService {
       base64String = this.arrayBufferToBase64(data);
     }
 
-    const byteCharacters = atob(base64String);
-    const byteArrays = [];
-
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-      const slice = byteCharacters.slice(offset, offset + 512);
-      const byteNumbers = new Array(slice.length);
-      for (let i = 0; i < slice.length; i++) {
-        byteNumbers[i] = slice.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      byteArrays.push(byteArray);
+    // Check if string is actually base64
+    if (!base64String || base64String.trim() === '') {
+      console.error('Empty base64 string');
+      return new Blob([], { type: mimeType });
     }
-    return new Blob(byteArrays, { type: mimeType });
+
+    // Basic validation that it's a valid base64 string
+    if (base64String.length % 4 !== 0) {
+      console.warn('Base64 string length not multiple of 4, may be invalid');
+    }
+
+    try {
+      const byteCharacters = atob(base64String);
+      const byteArrays = [];
+
+      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+        const slice = byteCharacters.slice(offset, offset + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+      }
+      
+      console.log(`Created blob with MIME type: ${mimeType}, size: ${byteArrays.reduce((sum, arr) => sum + arr.length, 0)} bytes`);
+      return new Blob(byteArrays, { type: mimeType });
+    } catch (error) {
+      console.error('Error decoding base64:', error);
+      throw new Error('Invalid base64 data');
+    }
+  } catch (error) {
+    console.error('Error in base64ToBlob:', error);
+    throw error;
   }
+}
 
   async pause(): Promise<void> {
     try {
@@ -261,7 +325,9 @@ export class MediaPlayerService {
       this._savedPosition = activePlayer.currentTime;
       activePlayer.pause();
       this.isPlaying$.next(false);
+      console.log('Playback paused at position:', this._savedPosition);
     } catch (error) {
+      console.error('Error pausing playback:', error);
       throw error;
     }
     if (this.currentTrack$.getValue()) {
@@ -273,6 +339,7 @@ export class MediaPlayerService {
     try {
       const track = this.currentTrack$.getValue();
       if (!track) {
+        console.error('No track selected to resume');
         throw new Error('No track selected to resume');
       }
       const activePlayer = this.getCurrentPlayer();
@@ -291,6 +358,7 @@ export class MediaPlayerService {
         await activePlayer.play();
         this.isPlaying$.next(true);
         this.startUpdates();
+        console.log('Playback resumed');
       } catch (playError) {
         console.error('Error resuming playback:', playError);
         throw playError;
@@ -340,11 +408,11 @@ export class MediaPlayerService {
 
   async togglePlay(): Promise<void> {
     try {
-      this.cleanup();
       const isPlaying = this.isPlaying$.getValue();
       const track = this.currentTrack$.getValue();
 
       if (!track) {
+        console.error('No track selected to play');
         throw new Error('No track selected to play');
       }
 
@@ -427,77 +495,174 @@ export class MediaPlayerService {
   getQueue(): Track[] { return this.queue; }
   getQueueIndex(): number { return this.queueIndex; }
 
-  async addLocalTrack(file: File): Promise<Track> {
-    try {
-      // Generate unique ID
-      const id = `local-${Date.now()}`;
-      const fileName = file.name;
-      const fileExtension = fileName.split('.').pop()?.toLowerCase() || 'mp3';
-      const uniqueFileName = `${id}.${fileExtension}`;
-      const relativeFilePath = `music/${uniqueFileName}`;
-      let fileUri = '';
+async addLocalTrack(file: File): Promise<Track> {
+  try {
+    console.log('Starting to add local track:', file.name, 'Size:', file.size);
+    
+    // Generate unique ID
+    const id = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const fileName = file.name;
+    const fileExtension = fileName.split('.').pop()?.toLowerCase() || 'mp3';
+    const uniqueFileName = `${id}.${fileExtension}`;
+    const musicDir = 'music';
+    const relativeFilePath = `${musicDir}/${uniqueFileName}`;
+    let fileUri = '';
 
-      // Save the actual file content
-      if (this.platform.is('hybrid')) {
-        // Convert to base64
-        const fileArrayBuffer = await file.arrayBuffer();
-        const base64 = this.arrayBufferToBase64(fileArrayBuffer);
+    // Save the actual file content
+    if (this.platform.is('hybrid')) {
+      console.log('Running on hybrid platform (Android/iOS)');
+      
+      // Convert to base64
+      const fileArrayBuffer = await file.arrayBuffer();
+      console.log('File converted to ArrayBuffer, size:', fileArrayBuffer.byteLength);
+      const base64 = this.arrayBufferToBase64(fileArrayBuffer);
+      console.log('File converted to base64');
 
-        // Create directory if needed
+      // Explicitly create the music directory first
+      try {
+        console.log('Ensuring music directory exists...');
+        await Filesystem.mkdir({
+          path: musicDir,
+          directory: Directory.Data,
+          recursive: true
+        });
+        console.log('Music directory created or verified');
+      } catch (mkdirErr) {
+        console.log('Music directory creation result:', mkdirErr);
+        // Continue even if directory already exists (this error is expected)
+      }
+
+      // Save file with improved error handling
+      try {
+        console.log('Writing file to:', relativeFilePath);
+        
+        // Check if file exists first and delete if it does (to avoid conflicts)
         try {
-          await Filesystem.mkdir({
-            path: 'music',
-            directory: Directory.Data,
-            recursive: true
+          await Filesystem.deleteFile({
+            path: relativeFilePath,
+            directory: Directory.Data
           });
-        } catch (dirErr) {
-          // Directory might already exist
+          console.log('Deleted existing file with same name');
+        } catch (deleteErr) {
+          // File likely doesn't exist, which is fine
+          console.log('No existing file to delete');
         }
-
-        // Save file
+        
+        // Write the file
         const savedFile = await Filesystem.writeFile({
           path: relativeFilePath,
           data: base64,
           directory: Directory.Data
         });
-
-        fileUri = savedFile.uri;
-        console.log('File saved at:', fileUri);
-      } else {
-        // Web browser - create blob URL
-        fileUri = URL.createObjectURL(file);
+        
+        console.log('File write result:', savedFile);
+        
+        // On Android, ensure we have a proper URI format
+        if (this.platform.is('android')) {
+          if (savedFile.uri) {
+            fileUri = savedFile.uri;
+            console.log('Using saved file URI:', fileUri);
+          } else {
+            // If no URI is returned, construct one from the path
+            // Use the full path that includes the directory
+            fileUri = `file://${relativeFilePath}`;
+            console.log('Constructed file URI:', fileUri);
+          }
+        } else {
+          // For iOS
+          if (savedFile.uri) {
+            fileUri = savedFile.uri;
+          } else {
+            fileUri = `file://${relativeFilePath}`;
+          }
+          console.log('Set fileUri to:', fileUri);
+        }
+      } catch (writeErr) {
+        console.error('File write error details:', writeErr);
+        // More detailed error for debugging
+        const errorDetails = typeof writeErr === 'object' ? 
+          JSON.stringify(writeErr, Object.getOwnPropertyNames(writeErr)) : String(writeErr);
+        throw new Error(`Could not write file: ${errorDetails}`);
       }
-
-      // Try to extract metadata from file
-      let title = fileName.replace(/\.[^/.]+$/, '');
-      let artist = 'Local Music';
-      let album = 'My Music';
-      let imageUrl = 'assets/music-bg.png';
-
-      // Create track object
-      const track: Track = {
-        id,
-        title,
-        artist,
-        album,
-        duration: await this.getAudioDuration(file),
-        imageUrl,
-        previewUrl: fileUri,
-        spotifyId: '',
-        liked: false,
-        isLocal: true,
-        localPath: relativeFilePath // Add the relative path
-      };
-
-      // Save to database with local path info
-      await this.dataService.saveLocalMusic(track, relativeFilePath);
-
-      return track;
-    } catch (error) {
-      console.error('Error adding local track:', error);
-      throw error;
+    } else {
+      // Web browser - create blob URL
+      try {
+        fileUri = URL.createObjectURL(file);
+        console.log('Created blob URL for web browser:', fileUri);
+      } catch (blobErr) {
+        console.error('Error creating blob URL:', blobErr);
+        throw new Error(`Failed to create blob URL: ${blobErr}`);
+      }
     }
+
+    if (!fileUri) {
+      throw new Error('Failed to obtain a valid file URI');
+    }
+
+    // Try to extract metadata from file
+    let title = fileName.replace(/\.[^/.]+$/, ''); // Remove extension
+    let artist = 'Local Music';
+    let album = 'My Music';
+    let imageUrl = 'assets/music-bg.png';
+
+    // Extract artist from filename if it contains a dash
+    if (title.includes(' - ')) {
+      const parts = title.split(' - ');
+      if (parts.length >= 2) {
+        artist = parts[0].trim();
+        title = parts[1].trim();
+      }
+    }
+
+    console.log('Creating track object with metadata');
+    
+    // Get audio duration with better error handling
+    let duration = 0;
+    try {
+      duration = await this.getAudioDuration(file);
+      console.log('Got audio duration:', duration);
+    } catch (durationErr) {
+      console.warn('Failed to get audio duration, using 0:', durationErr);
+    }
+    
+    // Create track object
+    const track: Track = {
+      id,
+      title,
+      artist,
+      album,
+      duration,
+      imageUrl,
+      previewUrl: fileUri,
+      spotifyId: '',
+      liked: false,
+      isLocal: true,
+      localPath: relativeFilePath
+    };
+
+    console.log('Final track object:', JSON.stringify(track));
+
+    // Save to database with better error handling
+    try {
+      console.log('Saving track to database');
+      await this.dataService.saveLocalMusic(track, relativeFilePath);
+      console.log('Track successfully saved to database');
+    } catch (dbErr) {
+      console.error('Database save error details:', dbErr);
+      const errorDetails = typeof dbErr === 'object' ? 
+        JSON.stringify(dbErr, Object.getOwnPropertyNames(dbErr)) : String(dbErr);
+      throw new Error(`Could not save track info: ${errorDetails}`);
+    }
+
+    return track;
+  } catch (error) {
+    console.error('Complete error details in addLocalTrack:', 
+      error instanceof Error ? 
+      `${error.name}: ${error.message}\n${error.stack}` : 
+      JSON.stringify(error));
+    throw error;
   }
+}
 
   async getAudioDuration(file: File): Promise<number> {
     return new Promise((resolve) => {
@@ -536,7 +701,7 @@ export class MediaPlayerService {
     });
   }
 
-  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+  arrayBufferToBase64(buffer: ArrayBuffer): string {
     let binary = '';
     const bytes = new Uint8Array(buffer);
     const len = bytes.byteLength;
@@ -567,14 +732,18 @@ export class MediaPlayerService {
     }
   }
 
-  cleanup(): void {
+cleanup(): void {
+  try {
     // Stop both players
-    this.audioPlayer.pause();
-    this.localAudioPlayer.pause();
-
-    // Reset positions to beginning
-    this.audioPlayer.currentTime = 0;
-    this.localAudioPlayer.currentTime = 0;
+    if (this.audioPlayer) {
+      this.audioPlayer.pause();
+      this.audioPlayer.currentTime = 0;
+    }
+    
+    if (this.localAudioPlayer) {
+      this.localAudioPlayer.pause();
+      this.localAudioPlayer.currentTime = 0;
+    }
 
     // Revoke any existing blob URLs
     if (this._currentBlobUrl) {
@@ -591,7 +760,10 @@ export class MediaPlayerService {
       clearInterval(this.timerId);
       this.timerId = null;
     }
+  } catch (error) {
+    console.error('Error during cleanup:', error);
   }
+}
 
   public async clearCurrentTrack(): Promise<void> {
     try {
